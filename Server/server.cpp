@@ -11,9 +11,10 @@
 #include "http_io.hpp"
 #include "router.hpp"
 
-HTTP::Server::Server(int domain, int service, int protocol, int port, u_long interface, int bklg) {
+HTTP::Server::Server(int domain, int service, int protocol, int port, u_long interface, int bklg,int threads_count) {
     socket = new ListenSocket(domain, service, protocol, port, interface, bklg);
-    thread_pool.init(4);
+    if (threads_count > 0) thread_pool.init(threads_count);
+    else thread_pool.init(std::thread::hardware_concurrency());
 }
 
 HTTP::ListenSocket* HTTP::Server::get_socket() { return socket; }

@@ -282,7 +282,7 @@ void HTTP::HttpIO::send_file_response(int client_socket, const std::string& path
 
     if (!is_within_base(base, requested)) {
         const std::string forbidden =
-            "HTTP/1.1 404 Forbidden\r\n"
+            "HTTP/1.1 403 Forbidden\r\n"
             "Content-Length: 0\r\n"
             "Connection: close\r\n"
             "\r\n";
@@ -312,6 +312,7 @@ void HTTP::HttpIO::send_file_response(int client_socket, const std::string& path
     off_t offset = 0;
     while (offset < st.st_size) {
         const ssize_t sent = sendfile(client_socket, fd, &offset, st.st_size - offset);
+        //std::cout << offset; 
         if (sent <= 0) {
             break;
         }

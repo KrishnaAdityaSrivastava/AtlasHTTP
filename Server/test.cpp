@@ -11,7 +11,7 @@
 int main(){
     signal(SIGPIPE, SIG_IGN);
 
-    HTTP::Server server(AF_INET,SOCK_STREAM,0,8080,INADDR_ANY,16);
+    HTTP::Server server(AF_INET,SOCK_STREAM,0,8080,INADDR_ANY,16,4);
 
     server.get("/", [](const HTTP::Request& req) {
         HTTP::Response res(200, "<h1>Hello, World!</h1>");
@@ -30,8 +30,8 @@ int main(){
         res.is_file = true;
         res.file_path = id;
 
-        std::cout << "ID: " << id << std::endl;
-        std::cout << "PATH: " << res.file_path << std::endl;
+        //std::cout << "ID: " << id << std::endl;
+        //std::cout << "PATH: " << res.file_path << std::endl;
         //res.headers["Content-Type"] = "text/html";
         return res;
     });

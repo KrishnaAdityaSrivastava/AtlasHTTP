@@ -32,7 +32,7 @@ class Server {
     std::unordered_map<int, ClientConnection> conn_map;
 
   public:
-    Server(int domain, int service, int protocol, int port, u_long interface, int bklg);
+    Server(int domain, int service, int protocol, int port, u_long interface, int bklg,int threads_count);
 
     ListenSocket* get_socket();
     void handle_client_connection(int client_socket);
