@@ -15,24 +15,110 @@ The project was developed as a systems programming and performance engineering e
 * Implemented zero-copy static file delivery using `sendfile()`
 * Used `writev()` scatter/gather I/O for dynamic responses
 * Added request size validation and path traversal protection
-* Improved throughput from approximately **5K req/s** to **57K+ req/s** through architectural optimizations
+* Improved throughput from approximately 5K req/s to 86K+ req/s on dynamic route workloads through architectural optimizations
+* Achieved ~75% of NGINX throughput for static file serving while using a custom HTTP pipeline
 * Benchmarked against NGINX to evaluate design decisions and scalability
+* Profiling with Linux perf showed response transmission and kernel networking paths (writev, tcp_sendmsg, sendfile) dominating CPU time, indicating that networking overhead rather than route lookup was the primary performance bottleneck.
 
 ---
 
 # Performance Overview
 
-The project was profiled using `wrk` with 4 benchmark threads and 20-second test runs. The goal was not simply to maximize throughput, but to understand how architectural decisions affect scalability and latency.
+AtlasHTTP was benchmarked using `wrk` on Linux to measure the impact of architectural changes and evaluate performance characteristics under different workloads.
 
-| Stage               | Architecture                   | Throughput   | Avg Latency      | p99 Latency |
-| ------------------- | ------------------------------ | ------------ | ---------------- | ----------- |
-| Baseline            | Single-threaded implementation | ~5,100 req/s | 9.87 ms - 154 ms | N/A         |
-| Thread Pool         | Worker-thread execution        | 21,489 req/s | 23.50 ms         | 48.85 ms    |
-| Epoll               | Event-driven networking        | 43,308 req/s | 18.40 ms         | 21.92 ms    |
-| Epoll + Thread Pool | Final architecture             | 57,650 req/s | 20.50 ms         | 30.39 ms    |
-| NGINX Reference     | Production-grade server        | 60,438 req/s | 13.09 ms         | 32.54 ms    |
+The objective was not solely to maximize throughput, but to understand how design decisions such as event-driven I/O, thread-pool scheduling, request parsing, routing, and response delivery affect scalability and latency.
 
-The final architecture achieved throughput in the same order of magnitude as the NGINX benchmark reference while remaining a learning-oriented implementation. The comparison is intended as a performance reference rather than a claim of feature parity.
+## Optimization Progress
+
+The server evolved through several architectural iterations, each targeting a different bottleneck identified through profiling and benchmarking.
+
+| Stage               | Architecture                   | Throughput   | Avg Latency | p99 Latency |
+|---------------------|--------------------------------|-------------:|------------:|------------:|
+| Baseline            | Single-threaded implementation | ~5,100 req/s | 9.87 ms     | 154.00 ms   |
+| Thread Pool         | Worker-thread execution        | ~21,489 req/s| 23.50 ms    | 48.85 ms    |
+| Epoll               | Event-driven networking        | ~43,308 req/s| 18.40 ms    | 21.92 ms    |
+| Current             | Dynamic route workload         | ~86,898 req/s| 5.27 ms     | 28.23 ms    |
+
+These optimizations improved throughput by more than **17×** compared to the original single-threaded implementation.
+
+---
+
+## Dynamic Route Benchmark
+
+This benchmark measures the framework's request-processing pipeline using a simple in-memory route that returns a fixed HTML response.
+
+```text
+GET /
+→ <h1>Hello, World!</h1>
+```
+
+Benchmark configuration:
+
+```bash
+wrk -t4 -c500 -d30s
+```
+
+| Server                   | Requests/sec | Avg Latency | Transfer/sec |
+| ------------------------ | -----------: | ----------: | -----------: |
+| AtlasHTTP                | 86,897 req/s |     5.27 ms |   11.77 MB/s |
+| NGINX (return directive) | 18,447 req/s |     4.94 ms |    2.71 MB/s |
+
+This workload primarily exercises:
+
+* HTTP request parsing
+* Route lookup
+* Response generation
+* Socket write performance
+
+Because NGINX's `return` directive is not representative of its primary optimization targets, this benchmark is included as a framework-level reference rather than a claim of production-server superiority.
+
+---
+
+## Static File Benchmark
+
+This benchmark serves the same static HTML file through both AtlasHTTP and NGINX.
+
+Benchmark configuration:
+
+```bash
+wrk -t8 -c500 -d30s
+```
+
+| Server    | Requests/sec | Avg Latency | Transfer/sec |
+| --------- | -----------: | ----------: | -----------: |
+| AtlasHTTP | 12,850 req/s |    38.15 ms |   11.72 MB/s |
+| NGINX     | 17,238 req/s |     6.31 ms |   18.17 MB/s |
+
+AtlasHTTP achieved approximately **75% of NGINX's throughput** while serving static content through a custom HTTP stack built from scratch.
+
+The static-file benchmark is the more representative comparison because both servers perform request parsing, routing, file handling, and response transmission.
+
+---
+
+## Profiling Insights
+
+Performance bottlenecks were investigated using Linux `perf`.
+
+Profiling showed that the majority of CPU time was spent in response transmission and kernel networking paths rather than route matching logic.
+
+Representative hot paths included:
+
+```text
+writev()
+tcp_sendmsg()
+tcp_sendmsg_locked()
+sock_write_iter()
+```
+
+These findings indicated that network I/O and response delivery dominated execution time, while route lookup contributed only a small fraction of overall request cost.
+
+This profiling process guided several optimizations, including:
+
+* Adoption of `epoll` for scalable event-driven networking
+* Worker-thread scheduling for request execution
+* Scatter/gather writes using `writev()`
+* Zero-copy static file delivery using `sendfile()`
+* Reduction of unnecessary response-copying overhead
 
 ---
 
@@ -390,6 +476,18 @@ Dynamic responses use `writev()` to reduce copying and minimize system-call over
 Static files are delivered using `sendfile()`, allowing data transfer directly from the filesystem to the socket.
 
 ---
+
+## Benchmark Environment
+
+All benchmarks were performed on a consumer laptop running Debian Linux.
+
+- CPU: Intel Core i5-4200U @ 1.60 GHz (2 cores / 4 threads)
+- Memory: 8 GB RAM
+- Operating System: Debian GNU/Linux 12 (Bookworm)
+- Compiler: GCC 12.2.0
+- Build Flags: `-O3 -march=native -flto -pthread`
+
+Benchmark workloads were executed locally using `wrk` against the loopback interface (`127.0.0.1`). Results are intended to demonstrate architectural improvements and relative performance characteristics rather than provide absolute production deployment metrics.
 
 # Areas for Further Engineering
 
