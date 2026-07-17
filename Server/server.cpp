@@ -69,21 +69,6 @@ void HTTP::Server::handle_client_connection(int client_socket) {
     
     //cache.inc("reqcnt", 1);
 }
-// void HTTP::Server::processRequest(Request& req){
-//     HTTP::Response res = HTTP::Router::dispatch(routes, req);
-        
-//     if (res.is_file) {
-//         HTTP::HttpIO::send_file_response(client_socket, res.file_path);
-//         close(client_socket);
-//         return;
-//     }
-//     else HTTP::HttpIO::send_response(client_socket, res);
-
-//     auto it = req.headers.find("Connection");
-//     if (it != req.headers.end() && it->second == "close") {
-//         break;
-//     }
-// }
 
 void HTTP::Server::launch() {
     int listen_fd = socket->get_sock();
@@ -166,8 +151,6 @@ void HTTP::Server::launch() {
         }
     }
 }
-
-HTTP::Cache& HTTP::Server::get_cache() { return cache; }
 
 std::string HTTP::Server::make_key(const std::string& method, const std::string& path) {
     return method + ":" + path;
