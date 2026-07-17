@@ -506,12 +506,6 @@ The current implementation intentionally leaves several opportunities for future
 
 ---
 
-# License
-
-This project is provided for educational and experimental purposes.
-
----
-
 # Key Takeaways
 
 AtlasHTTP demonstrates how modern web servers are built beneath framework abstractions by combining low-level networking, concurrency, HTTP parsing, and performance engineering into a complete end-to-end server implementation.
