@@ -11,7 +11,6 @@
 #include "response.hpp"
 #include "route.hpp"
 
-#include "../Cache/cache.hpp"
 #include "../network.hpp"
 #include "client_conn.hpp"
 
@@ -45,7 +44,6 @@ class Server {
     void post(const std::string& path, std::function<HTTP::Response(const Request&)> handler);
 
     std::string make_key(const std::string& method, const std::string& path);
-    Cache& get_cache();
 
     void launch();
 };
