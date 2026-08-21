@@ -1,513 +1,183 @@
 # AtlasHTTP
 
-**AtlasHTTP** is a high-performance HTTP/1.1 server framework built from scratch in C++17 for Linux. It implements the complete request lifecycle directly on top of POSIX sockets, `epoll`, non-blocking I/O, worker-thread scheduling, `writev()`, and `sendfile()` without relying on third-party networking frameworks.
-
-The project was developed as a systems programming and performance engineering exercise to explore how modern web servers operate beneath framework abstractions. It focuses on connection management, event-driven networking, request parsing, routing, concurrency, response serialization, and efficient static file delivery.
-
----
-
-# Highlights
-
-* Built an HTTP server framework from scratch in C++17
-* Implemented event-driven networking using Linux `epoll`
-* Designed a reusable worker-thread pool for request execution
-* Added dynamic route matching with path parameters
-* Implemented zero-copy static file delivery using `sendfile()`
-* Used `writev()` scatter/gather I/O for dynamic responses
-* Added request size validation and path traversal protection
-* Improved throughput from approximately 5K req/s to 86K+ req/s on dynamic route workloads through architectural optimizations
-* Achieved ~75% of NGINX throughput for static file serving while using a custom HTTP pipeline
-* Benchmarked against NGINX to evaluate design decisions and scalability
-* Profiling with Linux perf showed response transmission and kernel networking paths (writev, tcp_sendmsg, sendfile) dominating CPU time, indicating that networking overhead rather than route lookup was the primary performance bottleneck.
-
----
-
-# Performance Overview
-
-AtlasHTTP was benchmarked using `wrk` on Linux to measure the impact of architectural changes and evaluate performance characteristics under different workloads.
-
-The objective was not solely to maximize throughput, but to understand how design decisions such as event-driven I/O, thread-pool scheduling, request parsing, routing, and response delivery affect scalability and latency.
-
-## Optimization Progress
-
-The server evolved through several architectural iterations, each targeting a different bottleneck identified through profiling and benchmarking.
-
-| Stage               | Architecture                   | Throughput   | Avg Latency | p99 Latency |
-|---------------------|--------------------------------|-------------:|------------:|------------:|
-| Baseline            | Single-threaded implementation | ~5,100 req/s | 9.87 ms     | 154.00 ms   |
-| Thread Pool         | Worker-thread execution        | ~21,489 req/s| 23.50 ms    | 48.85 ms    |
-| Epoll               | Event-driven networking        | ~43,308 req/s| 18.40 ms    | 21.92 ms    |
-| Current             | Dynamic route workload         | ~86,898 req/s| 5.27 ms     | 28.23 ms    |
-
-These optimizations improved throughput by more than **17×** compared to the original single-threaded implementation.
-
----
-
-## Dynamic Route Benchmark
-
-This benchmark measures the framework's request-processing pipeline using a simple in-memory route that returns a fixed HTML response.
-
-```text
-GET /
-→ <h1>Hello, World!</h1>
-```
-
-Benchmark configuration:
-
-```bash
-wrk -t4 -c500 -d30s
-```
-
-| Server                   | Requests/sec | Avg Latency | Transfer/sec |
-| ------------------------ | -----------: | ----------: | -----------: |
-| AtlasHTTP                | 86,897 req/s |     5.27 ms |   11.77 MB/s |
-| NGINX (return directive) | 18,447 req/s |     4.94 ms |    2.71 MB/s |
-
-This workload primarily exercises:
-
-* HTTP request parsing
-* Route lookup
-* Response generation
-* Socket write performance
-
-Because NGINX's `return` directive is not representative of its primary optimization targets, this benchmark is included as a framework-level reference rather than a claim of production-server superiority.
-
----
-
-## Static File Benchmark
-
-This benchmark serves the same static HTML file through both AtlasHTTP and NGINX.
-
-Benchmark configuration:
-
-```bash
-wrk -t8 -c500 -d30s
-```
-
-| Server    | Requests/sec | Avg Latency | Transfer/sec |
-| --------- | -----------: | ----------: | -----------: |
-| AtlasHTTP | 12,850 req/s |    38.15 ms |   11.72 MB/s |
-| NGINX     | 17,238 req/s |     6.31 ms |   18.17 MB/s |
-
-AtlasHTTP achieved approximately **75% of NGINX's throughput** while serving static content through a custom HTTP stack built from scratch.
-
-The static-file benchmark is the more representative comparison because both servers perform request parsing, routing, file handling, and response transmission.
-
----
-
-## Profiling Insights
-
-Performance bottlenecks were investigated using Linux `perf`.
-
-Profiling showed that the majority of CPU time was spent in response transmission and kernel networking paths rather than route matching logic.
-
-Representative hot paths included:
-
-```text
-writev()
-tcp_sendmsg()
-tcp_sendmsg_locked()
-sock_write_iter()
-```
-
-These findings indicated that network I/O and response delivery dominated execution time, while route lookup contributed only a small fraction of overall request cost.
-
-This profiling process guided several optimizations, including:
-
-* Adoption of `epoll` for scalable event-driven networking
-* Worker-thread scheduling for request execution
-* Scatter/gather writes using `writev()`
-* Zero-copy static file delivery using `sendfile()`
-* Reduction of unnecessary response-copying overhead
-
----
-
-# Why This Project Exists
-
-Most web frameworks abstract away networking internals, making it difficult to understand what happens between a TCP connection and an HTTP response.
-
-AtlasHTTP was built to explore:
-
-* Socket lifecycle management
-* Event-driven server architectures
-* TCP buffering and partial reads
-* HTTP parsing from raw byte streams
-* Concurrent request execution
-* Efficient response delivery
-* Static file serving techniques
-* Real-world performance bottlenecks
-
-The goal was to gain hands-on experience building the infrastructure that higher-level frameworks depend on.
-
----
-
-# Architecture
-
-```text
-Client
-   │
-   ▼
-Accept Connection
-   │
-   ▼
-epoll Event Loop
-   │
-   ▼
-Connection Buffer
-   │
-   ▼
-HTTP Parser
-   │
-   ▼
-Thread Pool
-   │
-   ▼
-Router
-   │
-   ├── Dynamic Routes
-   └── Static Files
-   │
-   ▼
-Response Writer
-(writev / sendfile)
-   │
-   ▼
-Client
-```
-
-AtlasHTTP separates connection readiness from request execution.
-
-1. The main event loop accepts incoming connections and monitors socket readiness through `epoll`.
-2. Connection-specific buffers accumulate partial TCP data.
-3. Complete HTTP requests are parsed and dispatched to worker threads.
-4. Route handlers generate response objects.
-5. Responses are written back using either `writev()` or `sendfile()` depending on the response type.
-
----
-
-# Core Features
-
-## Networking
-
-* POSIX TCP socket abstractions
-* Bind, listen, and connect socket wrappers
-* Linux `epoll` event loop
-* Non-blocking socket support
-* Configurable worker-thread count
-* Configurable listen backlog
-
-## HTTP
-
-* HTTP/1.0 support
-* HTTP/1.1 support
-* Request parsing from raw socket streams
-* GET route handling
-* POST route handling
-* Response serialization
-* Keep-alive support for standard responses
-
-## Routing
-
-* Lambda-based route handlers
-* Dynamic path parameters
-* Segment-based path matching
-
-Example:
-
-```text
-/users/:id
-```
-
-Matched values are exposed through:
-
-```cpp
-req.params
-```
-
-## Static File Serving
-
-* Secure static file serving rooted at `./public`
-* MIME type detection
-* Path traversal protection
-* Zero-copy transfer using `sendfile()`
-
-## Performance-Oriented Design
-
-* Event-driven networking via `epoll`
-* Non-blocking socket operations
-* Worker-thread execution model
-* Buffered request parsing
-* `writev()` scatter/gather response writes
-* `sendfile()` kernel-assisted file transfer
-
-## Security Checks
-
-* Path traversal mitigation
-* Header size limit (16 KB)
-* Body size limit (1 MB)
-* HTTP method validation
-* HTTP version validation
-* Safe `Content-Length` parsing using `std::from_chars`
-
----
-
-# Technical Challenges Solved
-
-Building AtlasHTTP required solving several common server-engineering problems:
-
-* Handling partial TCP reads
-* Managing thousands of socket readiness events efficiently
-* Designing thread-safe task dispatch
-* Parsing HTTP requests incrementally
-* Preventing filesystem traversal attacks
-* Balancing concurrency with synchronization overhead
-* Reducing response-copying costs
-* Identifying performance bottlenecks through profiling
-
----
-
-# Project Structure
-
-```text
-.
-├── Cache/
-├── Server/
-├── Sockets/
-├── public/
-├── network.hpp
-└── README.md
-```
-
-### Sockets/
-
-Low-level networking abstractions responsible for socket creation, binding, listening, and client connections.
-
-### Server/
-
-Core HTTP runtime including:
-
-* Event loop
-* Request parser
-* Router
-* Response writer
-* Thread pool
-
-### Cache/
-
-Small thread-safe cache implementation using:
-
-* std::unordered_map
-* std::mutex
-* std::atomic
-
-### public/
-
-Static web assets served by AtlasHTTP. All file responses are resolved relative to this directory.
----
-
-# Installation
+AtlasHTTP is a small C++ HTTP/1.x server framework for Linux. It implements the request lifecycle directly on top of POSIX sockets, non-blocking I/O, `epoll`, worker-thread scheduling, `writev()`, and `sendfile()` without third-party networking frameworks.
+
+The project is intended as a systems-programming and performance-engineering codebase for understanding how an HTTP server handles sockets, request parsing, routing, response serialization, concurrency, and static-file delivery.
+
+## Features
+
+- POSIX TCP socket wrappers for bind, listen, and connect operations.
+- Linux `epoll` event loop for connection readiness.
+- Worker-thread pool for request dispatch.
+- HTTP/1.0 and HTTP/1.1 request parsing for common methods.
+- Lambda-based GET and POST route handlers.
+- Dynamic path parameters such as `/users/:id` exposed through `HTTP::Request::params`.
+- Response serialization with `writev()`.
+- Static-file responses from `./public` with MIME detection, path traversal checks, and `sendfile()`.
+- Request header and body size limits.
 
 ## Requirements
 
-* Linux
-* C++17 Compiler
-* pthread
+- Linux. AtlasHTTP uses Linux/POSIX APIs including `epoll`, sockets, `writev()`, and `sendfile()`.
+- CMake 3.16 or newer.
+- A C++17 compiler such as GCC or Clang.
+- pthreads, provided by the system toolchain on typical Linux distributions.
 
-## Build
+No third-party C++ libraries are required.
 
-AtlasHTTP currently uses a simple source-based build process and does not require any external dependencies or third-party networking libraries.
-
-### Optimized Release Build
-
-```bash
-g++ -std=c++20 -O3 -march=native -flto -pthread \
-Sockets/*.cpp \
-Server/*.cpp \
-Cache/*.cpp \
--o http_server
-```
-
-### Optimization Flags
-
-| Flag | Purpose |
-|--------|--------|
-| `-O3` | Maximum compiler optimizations |
-| `-march=native` | Enables CPU-specific instruction optimizations |
-| `-flto` | Link Time Optimization across translation units |
-| `-pthread` | Enables multithreading support |
-
-These optimizations were used for the performance benchmarks reported in this repository.
-```
-## Run
-
-./atlas_http
-```
-
-The sample application starts a server on port `8080`.
-
----
-
-# Quick Start
-
-## Create A Server
-
-```cpp
-HTTP::Server server(
-    AF_INET,        // Address family
-    SOCK_STREAM,    // Socket type
-    0,              // Protocol (default for SOCK_STREAM)
-    8080,           // Listening port
-    INADDR_ANY,     // Network interface
-    16,             // Listen backlog
-    4               // Worker thread count
-);
-```
-
-## Register A Route
-
-```cpp
-server.get("/", [](const HTTP::Request& req) {
-    HTTP::Response res(
-        200,
-        "<h1>Hello, World!</h1>"
-    );
-
-    res.headers["Content-Type"] = "text/html";
-
-    return res;
-});
-```
-
-## Dynamic Parameters
-
-```cpp
-server.get("/users/:id", [](const HTTP::Request& req) {
-    return HTTP::Response(
-        200,
-        req.params.at("id")
-    );
-});
-```
-
-## Static File Route
-
-```cpp
-server.get("/files/:name", [](const HTTP::Request& req) {
-    HTTP::Response res;
-
-    res.is_file = true;
-    res.file_path = req.params.at("name");
-
-    return res;
-});
-```
-### Static File Serving Root
-
-AtlasHTTP serves files exclusively from the `./public` directory.
-
-For security reasons, file responses are resolved relative to the public root and requests outside this directory are rejected.
-
-Project structure:
+## Repository layout
 
 ```text
 .
-├── public/
-│   ├── index.html
-│   ├── images/
-│   └── css/
+├── .github/workflows/ci.yml      # GitHub Actions build and test workflow
+├── include/AtlasHTTP/            # Public headers
+│   ├── Server/                   # HTTP server, request/response, routing, and thread pool APIs
+│   ├── Sockets/                  # Socket abstraction headers
+│   └── network.hpp               # Umbrella networking header
+├── src/                          # Library implementation files
+│   ├── Server/
+│   └── Sockets/
+├── tests/                        # Automated tests run by CTest
+├── examples/                     # Runnable example server
+├── public/                       # Static web assets served by file responses
+├── network.hpp                   # Compatibility forwarding header for existing includes
+├── CMakeLists.txt                # Main CMake build definition
+├── CMakePresets.json             # Convenience CMake configure/build presets
+├── LICENSE
+└── README.md
 ```
 
-Example:
+## Build
+
+Configure and build with CMake:
+
+```bash
+cmake -S . -B build
+cmake --build build
+```
+
+This builds:
+
+- `atlas_http`, the reusable library target.
+- `atlas_http_server`, the example server, when `ATLASHTTP_BUILD_EXAMPLES` is enabled.
+- `router_tests`, when `ATLASHTTP_BUILD_TESTS` is enabled.
+
+Useful CMake options:
+
+```bash
+cmake -S . -B build -DATLASHTTP_BUILD_EXAMPLES=ON -DATLASHTTP_BUILD_TESTS=ON
+```
+
+Release builds can be configured with:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+```
+
+You can also use the included presets:
+
+```bash
+cmake --preset default
+cmake --build --preset default
+```
+
+## Test
+
+Run the automated tests with CTest after building:
+
+```bash
+ctest --test-dir build --output-on-failure
+```
+
+Current tests cover route matching, dynamic path parameters, and router dispatch behavior.
+
+## Run the example server
+
+Build the project, then run the sample application:
+
+```bash
+./build/atlas_http_server
+```
+
+The example starts an HTTP server on port `8080` and registers:
+
+- `GET /`, returning a small HTML response.
+- `GET /data/:id`, serving a file from `./public` whose path is provided by `:id`.
+
+Example requests:
+
+```bash
+curl http://127.0.0.1:8080/
+curl http://127.0.0.1:8080/data/index.html
+```
+
+Static-file responses are resolved relative to the repository's `public/` directory when the server is launched from the project root.
+
+## Basic usage
 
 ```cpp
-res.is_file = true;
-res.file_path = "index.html";
+#include <AtlasHTTP/Server/server.hpp>
+
+#include <csignal>
+#include <netinet/in.h>
+#include <sys/socket.h>
+
+int main() {
+    signal(SIGPIPE, SIG_IGN);
+
+    HTTP::Server server(AF_INET, SOCK_STREAM, 0, 8080, INADDR_ANY, 16, 4);
+
+    server.get("/", [](const HTTP::Request&) {
+        HTTP::Response res(200, "<h1>Hello, World!</h1>");
+        res.headers["Content-Type"] = "text/html";
+        return res;
+    });
+
+    server.launch();
+}
 ```
 
-serves:
+For compatibility with older code that included the repository-root header, `#include "network.hpp"` still forwards to the new public umbrella header.
 
-```text
-./public/index.html
-```
+## Configuration
 
-Similarly:
+AtlasHTTP configuration is currently done in code through the `HTTP::Server` constructor:
 
 ```cpp
-res.file_path = "images/logo.png";
+HTTP::Server server(
+    AF_INET,      // address family
+    SOCK_STREAM,  // socket type
+    0,            // protocol
+    8080,         // port
+    INADDR_ANY,   // interface
+    16,           // listen backlog
+    4             // worker thread count
+);
 ```
 
-serves:
+Static files are served from `./public`. Launch the server from the repository root or ensure that a `public` directory exists in the process working directory.
 
-```text
-./public/images/logo.png
+## CI
+
+GitHub Actions is configured in `.github/workflows/ci.yml` to run on pushes and pull requests. The workflow checks out the repository, configures CMake, builds the project, and runs CTest on Ubuntu.
+
+## Notes and limitations
+
+- The server is Linux-specific because it uses `epoll` and other POSIX/Linux APIs.
+- The current public API is intentionally small and mostly mirrors the original project structure.
+- HTTP parsing is minimal and focused on the needs of this framework; it is not a complete general-purpose HTTP implementation.
+
+## Contributing
+
+Contributions should keep the project dependency-light and focused on the custom HTTP server implementation. Please run the following before opening a pull request:
+
+```bash
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build --output-on-failure
 ```
 
-Attempts to access files outside the public directory are blocked and return `403 Forbidden`.
-```
+## License
 
-## Launch
-
-```cpp
-server.launch();
-```
-
----
-
-# Performance Engineering
-
-### Event-Driven Networking
-
-AtlasHTTP uses `epoll` to monitor socket readiness efficiently, avoiding the scalability limitations of per-connection blocking models.
-
-### Worker Thread Pool
-
-Parsed requests are dispatched into a shared task queue and executed by reusable worker threads instead of creating new threads per request.
-
-### Buffered Request Parsing
-
-Each connection maintains its own buffer, allowing HTTP requests to be reconstructed correctly across partial TCP reads.
-
-### Scatter/Gather Writes
-
-Dynamic responses use `writev()` to reduce copying and minimize system-call overhead.
-
-### Zero-Copy File Transfer
-
-Static files are delivered using `sendfile()`, allowing data transfer directly from the filesystem to the socket.
-
----
-
-## Benchmark Environment
-
-All benchmarks were performed on a consumer laptop running Debian Linux.
-
-- CPU: Intel Core i5-4200U @ 1.60 GHz (2 cores / 4 threads)
-- Memory: 8 GB RAM
-- Operating System: Debian GNU/Linux 12 (Bookworm)
-- Compiler: GCC 12.2.0
-- Build Flags: `-O3 -march=native -flto -pthread`
-
-Benchmark workloads were executed locally using `wrk` against the loopback interface (`127.0.0.1`). Results are intended to demonstrate architectural improvements and relative performance characteristics rather than provide absolute production deployment metrics.
-
-# Areas for Further Engineering
-
-The current implementation intentionally leaves several opportunities for future development:
-
-* Full non-blocking write buffering with `EPOLLOUT`
-* Graceful server shutdown
-* Chunked transfer encoding
-* Method-indexed or trie-based route lookup
-* Build system integration (CMake)
-* Automated tests
-* Structured logging
-* Improved HTTP compliance coverage
-* URL decoding support
-* Additional parser validation
-
----
-
-# Key Takeaways
-
-AtlasHTTP demonstrates how modern web servers are built beneath framework abstractions by combining low-level networking, concurrency, HTTP parsing, and performance engineering into a complete end-to-end server implementation.
-
-It serves as both a functional HTTP framework and a practical exploration of systems-level software design.
+AtlasHTTP is licensed under the MIT License. See [LICENSE](LICENSE) for details.

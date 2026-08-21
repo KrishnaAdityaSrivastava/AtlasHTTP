@@ -4,15 +4,16 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
-#include "thread_pool.hpp"
+#include <AtlasHTTP/Server/thread_pool.hpp>
 
-#include "request.hpp"
-#include "response.hpp"
-#include "route.hpp"
+#include <AtlasHTTP/Server/request.hpp>
+#include <AtlasHTTP/Server/response.hpp>
+#include <AtlasHTTP/Server/route.hpp>
 
-#include "../network.hpp"
-#include "client_conn.hpp"
+#include <AtlasHTTP/network.hpp>
+#include <AtlasHTTP/Server/client_conn.hpp>
 
 namespace HTTP {
 class Server {
@@ -26,8 +27,6 @@ class Server {
 
     std::function<std::string(Request)> custom_handler;
     std::vector<Route> routes;
-    HTTP::Cache cache;
-
     std::unordered_map<int, ClientConnection> conn_map;
 
   public:
@@ -35,8 +34,6 @@ class Server {
 
     ListenSocket* get_socket();
     void handle_client_connection(int client_socket);
-
-    void processRequest(Request& req);
 
     //void set_handler(std::function<std::string(Request)> operation);
 

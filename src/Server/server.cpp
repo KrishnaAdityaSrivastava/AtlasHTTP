@@ -1,4 +1,4 @@
-#include "server.hpp"
+#include <AtlasHTTP/Server/server.hpp>
 
 #include <iostream>
 #include <thread>
@@ -8,8 +8,8 @@
 #include <fcntl.h>
 #include <errno.h>
 
-#include "http_io.hpp"
-#include "router.hpp"
+#include <AtlasHTTP/Server/http_io.hpp>
+#include <AtlasHTTP/Server/router.hpp>
 
 HTTP::Server::Server(int domain, int service, int protocol, int port, u_long interface, int bklg,int threads_count) {
     socket = new ListenSocket(domain, service, protocol, port, interface, bklg);

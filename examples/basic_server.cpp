@@ -1,10 +1,9 @@
 #include <stdio.h>
 
-#include "server.hpp"
-#include "request.hpp"
-#include "response.hpp"
+#include <AtlasHTTP/Server/server.hpp>
+#include <AtlasHTTP/Server/request.hpp>
+#include <AtlasHTTP/Server/response.hpp>
 
-#include "../Cache/cache.hpp"
 #include <signal.h>
 
 

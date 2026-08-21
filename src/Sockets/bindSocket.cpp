@@ -1,4 +1,4 @@
-#include "bindSocket.hpp"
+#include <AtlasHTTP/Sockets/bindSocket.hpp>
 
 HTTP::BindSocket::BindSocket(int domain, int service, int protocol, int port, u_long interface)
     : Socket(domain, service, protocol, port, interface) {
