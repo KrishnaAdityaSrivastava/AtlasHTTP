@@ -11,9 +11,9 @@
 #include <filesystem>
 
 
-#include "request.hpp"
-#include "response.hpp"
-#include "client_conn.hpp"
+#include <AtlasHTTP/Server/request.hpp>
+#include <AtlasHTTP/Server/response.hpp>
+#include <AtlasHTTP/Server/client_conn.hpp>
 
 namespace HTTP::HttpIO {
         

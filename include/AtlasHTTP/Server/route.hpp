@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 #include <functional>
-#include "response.hpp"
+#include <AtlasHTTP/Server/response.hpp>
 
 namespace HTTP {
 struct Request;

@@ -1,4 +1,4 @@
-#include "connectSocket.hpp"
+#include <AtlasHTTP/Sockets/connectSocket.hpp>
 
 HTTP::ConnectSocket::ConnectSocket(int domain, int service, int protocol, int port, u_long interface)
     : Socket(domain, service, protocol, port, interface) {

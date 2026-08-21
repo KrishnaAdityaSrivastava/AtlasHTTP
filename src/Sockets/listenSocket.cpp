@@ -1,4 +1,4 @@
-#include "listenSocket.hpp"
+#include <AtlasHTTP/Sockets/listenSocket.hpp>
 
 HTTP::ListenSocket::ListenSocket(int domain, int service, int protocol, int port, u_long interface, int bklg)
     : BindSocket(domain, service, protocol, port, interface), backlog(bklg), listening(-1) {
@@ -6,7 +6,7 @@ HTTP::ListenSocket::ListenSocket(int domain, int service, int protocol, int port
     test_connection(listening);
 }
 
-void HTTP::ListenSocket::start_listening() { listening = listen(get_sock(), SOMAXCONN); }
+void HTTP::ListenSocket::start_listening() { listening = listen(get_sock(), backlog); }
 
 int HTTP::ListenSocket::get_listening() const { return listening; }
 

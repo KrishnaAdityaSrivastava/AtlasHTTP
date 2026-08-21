@@ -3,9 +3,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "request.hpp"
-#include "response.hpp"
-#include "route.hpp"
+#include <AtlasHTTP/Server/request.hpp>
+#include <AtlasHTTP/Server/response.hpp>
+#include <AtlasHTTP/Server/route.hpp>
 
 namespace HTTP::Router {
 

@@ -2,6 +2,7 @@
 #define ThreadPool_h
 
 #include <string>
+#include <functional>
 #include <queue>
 #include <vector>
 
@@ -11,7 +12,7 @@
 #include <atomic>
 #include <condition_variable>
 
-#include "request.hpp"
+#include <AtlasHTTP/Server/request.hpp>
 
 namespace HTTP {
 

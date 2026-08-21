@@ -1,8 +1,48 @@
-http_server
+# Build directories and generated CMake files
+/build*/
+/cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+
+# Compiled objects, libraries, and binaries
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+/http_server
+/atlas_http_server
+/router_tests
+
+# Runtime and profiling artifacts
+*.log
+*.pid
+*.profraw
+*.profdata
 perf.data
 perf.data.old
+core
+core.*
+
+# Local scratch files
 learning.txt
-public
-public2
 check.lua
-Cache
+/public2/
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store

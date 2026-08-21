@@ -1,7 +1,7 @@
 #ifndef ListenSocket_h
 #define ListenSocket_h
 
-#include "bindSocket.hpp"
+#include <AtlasHTTP/Sockets/bindSocket.hpp>
 
 namespace HTTP {
 class ListenSocket : public BindSocket {
